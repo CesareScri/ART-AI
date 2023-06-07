@@ -1,0 +1,255 @@
+import React, { useState, useEffect } from 'react';
+
+const ParentComponent = () => {
+  const [messages, setMessages] = useState([]);
+  const [intervalId, setIntervalId] = useState(null);
+
+  const handleMessageSubmit = async (newMsg) => {
+    const data = { prompt: newMsg };
+    const options = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    };
+
+    try {
+      const response = await fetch('http://localhost:3001/v1/predictions', options);
+      if (!response.ok) {
+        throw new Error('Request failed');
+      }
+
+      const res = await response.json();
+      const answer = res.id; // Assuming the response provides the image source code as res.src
+
+      // Get the previous question from local storage
+      const prevQuestion = localStorage.getItem('previousQuestion');
+
+      // Call handleCreateIMG with id (answer) and newMsg
+      handleCreateIMG(answer, newMsg, prevQuestion);
+
+      // Update messages state with the question and answer
+      setMessages((prevMessages) => [...prevMessages, { question: newMsg, answer, loading: true }]);
+    } catch (error) {
+      console.log('Error:', error.message);
+    }
+  };
+
+  const handleCreateIMG = (answer, newMsg, prevQuestion) => {
+    if (intervalId) {
+      clearInterval(intervalId); // Clear any existing interval
+    }
+
+    const newIntervalId = setInterval(async () => {
+      try {
+        const response = await fetch(`http://localhost:3001/v1/predictions/${answer}`);
+        if (!response.ok) {
+          throw new Error('Request failed');
+        }
+
+        const res = await response.json();
+
+        setMessages((prevMessages) =>
+          prevMessages.map((msg) => {
+            if (msg.question === newMsg) {
+              return { ...msg, status: res.status };
+            }
+            return msg;
+          })
+        );
+
+        if (res.status === 'succeeded') {
+          const imageUrl = res.output[0]; // Assuming the image source is available in res.output[0]
+
+          setMessages((prevMessages) =>
+            prevMessages.map((msg) => {
+              if (msg.question === newMsg) {
+                return { ...msg, imageUrl, loading: false };
+              }
+              return msg;
+            })
+          );
+
+          clearInterval(newIntervalId); // Clear the interval when the request succeeds
+
+          // Store the current question as the previous question in local storage
+          localStorage.setItem('previousQuestion', newMsg);
+        }
+      } catch (error) {
+        console.log('Error:', error.message);
+        clearInterval(newIntervalId); // Clear the interval on error
+      }
+    }, 1000);
+
+    setIntervalId(newIntervalId); // Store the new interval ID
+  };
+
+  useEffect(() => {
+    messages.forEach((msg) => {
+      if (!msg.imageUrl && msg.question) {
+        handleCreateIMG(msg.answer, msg.question);
+      }
+    });
+  }, [messages]);
+
+  const handleSubmit = (event, newMsg) => {
+    event.preventDefault();
+    handleMessageSubmit(newMsg);
+    event.target.reset();
+    localStorage.clear();
+  };
+
+  return (
+    <div>
+      <UserInput handleSubmit={handleSubmit} />
+
+      <div className="chat-parent">
+        {messages.map((msg, index) => (
+          <div key={index}>
+            <ResponseGet question={msg.question} />
+            <Container
+              imageUrl={msg.imageUrl}
+              loading={msg.loading}
+              status={msg.status}
+              setMessages={setMessages}
+              handleSubmit={handleSubmit}
+              handleMessageSubmit={handleMessageSubmit} // Pass handleMessageSubmit as a prop
+              handleCreateIMG={handleCreateIMG} // Pass handleCreateIMG as a prop
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const UserInput = ({ handleSubmit }) => {
+  const handleFormSubmit = (event) => {
+    event.preventDefault();
+    const newMsg = event.target.elements.msg.value;
+    handleSubmit(event, newMsg);
+  };
+
+  return (
+    <div className="input-bottom">
+      <form onSubmit={handleFormSubmit}>
+        <div className="userInterface">
+          <input type="text" name="msg" placeholder="Send a message." />
+          <button type="submit">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              fill="currentColor"
+              className="bi bi-send-fill"
+              viewBox="0 0 16 16"
+            >
+              <path d="M15.964.686a.5.5 0 0 0-.65-.65L.767 5.855H.766l-.452.18a.5.5 0 0 0-.082.887l.41.26.001.002 4.995 3.178 3.178 4.995.002.002.26.41a.5.5 0 0 0 .886-.083l6-15Zm-1.833 1.89L6.637 10.07l-.215-.338a.5.5 0 0 0-.154-.154l-.338-.215 7.494-7.494 1.178-.471-.47 1.178Z" />
+            </svg>
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+const ResponseGet = ({ question }) => {
+  return (
+    <div className="message-sent parent-receive">
+      <div className="circle-parent">
+        <div className="circle-sent-recive"></div>
+      </div>
+      <p>{question}</p>
+    </div>
+  );
+};
+
+const Container = ({ imageUrl, loading, status, setMessages, handleSubmit, handleMessageSubmit, handleCreateIMG }) => {
+  const [regenerating, setRegenerating] = useState(false);
+
+  const handleRegenerate = async () => {
+    setRegenerating(true);
+    try {
+      // Retrieve the previous question from local storage
+      const prevQuestion = localStorage.getItem('previousQuestion');
+
+      const data = { prompt: prevQuestion };
+      const options = {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      };
+      const response = await fetch('http://localhost:3001/v1/predictions', options);
+      if (!response.ok) {
+        throw new Error('Request failed');
+      }
+
+      const res = await response.json();
+      const newImageUrl = res.id; // Assuming the regenerated image URL is available in res.image
+
+      // Call handleCreateIMG with newImageUrl and prevQuestion
+      handleCreateIMG(newImageUrl, prevQuestion);
+
+      setRegenerating(false);
+    } catch (error) {
+      console.log('Error:', error.message);
+      setRegenerating(false);
+    }
+  };
+
+  const handleDownload = () => {
+    fetch(imageUrl)
+      .then((response) => response.blob())
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'out-0.jpg';
+        a.click();
+        URL.revokeObjectURL(url);
+      })
+      .catch((error) => {
+        console.log('Error:', error.message);
+      });
+  };
+
+  return (
+    <div className="message-sent ai-response">
+      <div className="circle-parent">
+        <div className="circle-sent"></div>
+      </div>
+      {loading ? (
+        <p>Running predict(<span className='is-pending'>{status}</span>);</p>
+      ) : (
+        <div className='img-container'>
+          <img src={imageUrl} alt="Response" />
+          <div className='button-edit'>
+          <button className='btn-dwl' onClick={handleDownload}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-down" viewBox="0 0 16 16">
+              <path fill-rule="evenodd" d="M8 1a.5.5 0 0 1 .5.5v11.793l3.146-3.147a.5.5 0 0 1 .708.708l-4 4a.5.5 0 0 1-.708 0l-4-4a.5.5 0 0 1 .708-.708L7.5 13.293V1.5A.5.5 0 0 1 8 1z"/>
+            </svg>
+          </button>
+          <button className='btn-reg' onClick={handleRegenerate} disabled={regenerating}>
+            Regenerate
+          </button>
+
+          {loading ? (
+            <div className='loading-status'></div>
+          ) : (
+            <div className='loading-status-done'>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill" viewBox="0 0 16 16">
+                <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+              </svg>
+            </div>
+          )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ParentComponent;
