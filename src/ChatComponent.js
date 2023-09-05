@@ -1,7 +1,4 @@
 import React, { useRef, useState, useEffect } from 'react';
-import Typed from 'typed.js';
-import Prism from 'prismjs';
-import 'prismjs/components/prism-javascript';
 
 
 
