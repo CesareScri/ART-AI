@@ -24,7 +24,7 @@ const ChatComponent = () => {
     event.target.reset();
 
     const handleRequest = async () => {
-      const apikey = "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";
+      const apikey = "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";
       const data = { "model": "gpt-3.5-turbo", "messages": JSON.parse(localStorage.getItem("messages")) };
       const options = {
         method: 'POST',
