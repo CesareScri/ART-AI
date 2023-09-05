@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 
 const Restoration = () => {
   const [file, setFile] = useState(null);
